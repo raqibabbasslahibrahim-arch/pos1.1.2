@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>نظام فواتير حرارية — POS</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<style>
+  body { font-family: Tahoma, sans-serif; direction: rtl; background: #f3f3f3; margin: 0; padding: 0; }
+  .header-bar { background: #007bff; color: #fff; padding: 10px; text-align: center; font-weight: bold; }
+  .container { width: 820px; max-width: 95%; margin: 12px auto; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .panel { background: #fff; border: 1px solid #ddd; padding: 10px; box-sizing: border-box; border-radius: 6px; }
+  .product-container, .history-container { width: 250px; }
+  .invoice-container { width: 520px; }
+  h3 { margin: 6px 0; font-size: 16px; }
+  label { display:block; font-size:13px; margin-top:6px; }
+  input[type="text"], input[type="number"], select { width: 100%; padding:6px; box-sizing: border-box; margin-top:4px; font-size:14px; }
+  button { padding:8px 10px; margin-top:8px; cursor:pointer; font-size:14px; }
+  table{ width:100%; border-collapse: collapse; margin-top:8px; }
+  table th, table td { border-bottom: 1px dashed #ccc; padding:6px 4px; text-align: center; font-size:13px; }
+  .totals { margin-top:8px; border-top:1px solid #eee; padding-top:8px; }
+  .totals div { display:flex; justify-content: space-between; margin:4px 0; font-size:14px; }
+  .small { font-size:12px; color:#666; }
+  .qr-canvas { display:block; margin:auto; }
+  .footer-note { text-align:center; color:gray; font-size:12px; margin-top:8px; }
+  @media (max-width:900px){
+    .container{ flex-direction: column; align-items: center; }
+    .product-container, .history-container { width: 95%; }
+    .invoice-container { width: 95%; }
+  }
+</style>
+</head>
+<body>
+  <div class="header-bar">💼 تطبيق فواتير رقيب 2025</div>
+
+  <div class="container">
+    <!-- Product manager -->
+    <div class="panel product-container">
+      <h3>إدارة المنتجات</h3>
+      <div class="small">أضف منتجاً إلى القائمة لاستخدامه لاحقاً في الفاتورة.</div>
+      <label>اسم المنتج</label><input id="newProductName" type="text" placeholder="مثال: شوربة">
+      <label>السعر</label><input id="newProductPrice" type="number" min="0" step="0.01" placeholder="مثال: 25.00">
+      <button onclick="addProduct()">+ إضافة منتج</button>
+
+      <label style="margin-top:10px;">قائمة المنتجات</label>
+      <select id="productList"><option value="">اختر منتجاً</option></select>
+      <div style="margin-top:8px;">
+        <button onclick="removeSelectedProduct()">حذف المنتج المختار</button>
+      </div>
+    </div>
+
+    <!-- Main invoice panel -->
+    <div class="panel invoice-container">
+      <h3>إعداد الفاتورة</h3>
+
+      <label>اسم المتجر</label>
+      <input id="storeName" type="text" value="متجر رقيب">
+
+      <label>الرقم الضريبي</label>
+      <input id="taxNumber" type="text" value="311111111100003">
+
+      <label>العنوان (سيظهر مع الهاتف)</label>
+      <input id="address" type="text" value="الرياض - السعودية">
+
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <div style="flex:1;">
+          <label>رقم الهاتف (قابل للتعديل)</label>
+          <input id="phoneNumber" type="text" value="735707210">
+        </div>
+        <div style="width:160px;">
+          <label>نسبة الضريبة (%)</label>
+          <input id="vatRate" type="number" min="0" max="100" step="0.01" value="15">
+          <label style="font-size:13px; margin-top:6px;"><input id="disableVAT" type="checkbox" onchange="calculateGrandTotal()"> تعطيل الضريبة</label>
+        </div>
+      </div>
+
+      <label>اسم الكاشير</label>
+      <input id="cashierName" type="text" value="كاشير 1">
+
+      <h3 style="margin-top:10px;">الأصناف في الفاتورة</h3>
+      <table id="itemsTable">
+        <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th>حذف</th></tr></thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button onclick="addItemFromList()">+ إضافة من القائمة</button>
+        <button onclick="addItem()">+ إضافة يدوي</button>
+        <button onclick="clearItems()">مسح الأصناف</button>
+      </div>
+
+      <div class="totals">
+        <div><span>المجموع الفرعي:</span><span id="subTotalDisplay">0.00</span></div>
+        <div><span>قيمة الضريبة:</span><span id="vatAmountDisplay">0.00</span></div>
+        <div style="border-top:1px dashed #ccc; padding-top:6px;"><span style="font-weight:bold">الإجمالي الكلي:</span><span id="grandTotalDisplay" style="font-weight:bold">0.00</span></div>
+      </div>
+
+      <label>المبلغ المدفوع</label>
+      <input id="paidAmount" type="number" value="0" step="0.01" oninput="updateQR()">
+
+      <h3 style="margin-top:10px;">QR Code</h3>
+      <canvas id="qrCanvas" class="qr-canvas" width="220" height="220" style="width:220px;height:220px;"></canvas>
+
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button onclick="saveInvoice()">💾 حفظ الفاتورة</button>
+        <button onclick="openPrintPage()">🖨️ عرض/طباعة</button>
+      </div>
+
+      <div class="footer-note">الرقيب للصيانة والبرمجة/ت: 735707210</div>
+    </div>
+
+    <!-- History and actions -->
+    <div class="panel history-container">
+      <h3>سجل الفواتير</h3>
+      <div class="small">قائمة الفواتير المحفوظة محلياً (localStorage)</div>
+      <label>الفواتير المحفوظة</label>
+      <select id="invoiceHistory"><option value="">-- اختر فاتورة --</option></select>
+
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button onclick="loadSelectedInvoiceForEdit()">✏️ تحميل للتعديل</button>
+        <button onclick="printSelectedInvoice()">🖨️ طباعة</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button onclick="deleteSelectedInvoice()">🗑️ حذف</button>
+        <button onclick="exportInvoices()">⬇️ تنزيل JSON</button>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label>استيراد فواتير (JSON)</label>
+        <input type="file" id="importInvoicesFile" accept="application/json" onchange="importInvoices(event)">
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ======== Helpers and state ======== */
+let itemCounter = 0;
+let products = [];
+let invoices = [];
+
+function escapeHtml(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ======== Products management ======== */
+function addProduct(){
+  const name = document.getElementById('newProductName').value.trim();
+  const price = parseFloat(document.getElementById('newProductPrice').value) || 0;
+  if(!name || price <= 0){ alert('أدخل اسم المنتج وسعرًا صحيحًا'); return; }
+  products.push({ name, price: price.toFixed(2) });
+  saveProductsToStorage();
+  updateProductSelect();
+  document.getElementById('newProductName').value='';
+  document.getElementById('newProductPrice').value='';
+}
+function updateProductSelect(){
+  const sel = document.getElementById('productList');
+  sel.innerHTML = '<option value="">اختر منتجاً</option>';
+  products.forEach((p,i)=> sel.innerHTML += `<option value="${i}">${escapeHtml(p.name)} — ${p.price}</option>`);
+}
+function removeSelectedProduct(){
+  const sel = document.getElementById('productList');
+  const idx = sel.value;
+  if(idx===''){ alert('اختر منتجاً للحذف'); return; }
+  products.splice(idx,1);
+  saveProductsToStorage();
+  updateProductSelect();
+}
+function saveProductsToStorage(){ localStorage.setItem('productList', JSON.stringify(products)); }
+function loadProductsFromStorage(){ products = JSON.parse(localStorage.getItem('productList')||'[]'); updateProductSelect(); }
+
+/* ======== Invoice items ======== */
+function addItem(desc='منتج', price=0){
+  itemCounter++;
+  const tbody = document.getElementById('itemsBody');
+  const tr = document.createElement('tr');
+  tr.id = 'item-'+itemCounter;
+  tr.innerHTML = 
