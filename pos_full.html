@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نقاط البيع — POS كامل</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body {font-family:'Cairo',sans-serif; background: linear-gradient(to bottom,#E3EAF0,#90A4AE); margin:0; padding:0; display:flex;}
+#sidebar{width:250px; background:#fff; border-left:2px solid #64B5F6; padding:10px; box-shadow:-2px 0 5px #90CAF9; height:100vh; overflow:auto;}
+#mainScreen{flex:1; padding:15px;}
+h1,h2,h3{text-align:center;color:#0D47A1;margin:5px 0;}
+h1{font-size:26px;font-weight:700;text-shadow:1px 1px #90CAF9;}
+h2{font-size:18px;font-weight:600;}
+input,select,button{padding:6px;margin:3px 0;border-radius:6px;border:1px solid #64B5F6;font-size:14px;}
+button{background:#1976D2;color:#fff;cursor:pointer;font-weight:700;transition:0.3s;}
+button:hover{background:#0D47A1;}
+table{width:100%;border-collapse:collapse;margin-top:10px;}
+td,th{border:1px solid #64B5F6;padding:5px;text-align:center;}
+td input,td select{width:70px;}
+#addProductForm{background:#E3F2FD;padding:10px;border-radius:8px;margin-bottom:10px;display:flex;gap:5px;align-items:center;}
+#addProductForm input, #addProductForm select{flex:1;}
+#addProductForm button{flex:none;}
+#commandBar{display:flex;justify-content:space-around;position:fixed;bottom:0;left:0;width:100%;background:#E3F2FD;padding:5px;box-shadow:0 -2px 5px #90CAF9;}
+#commandBar button{flex:1;margin:0 3px;font-size:14px;}
+#returnsList{max-height:150px; overflow:auto; border:1px solid #64B5F6; padding:5px; border-radius:6px; margin-top:5px;}
+#currencySelect{width:100%;padding:5px;margin-bottom:5px;border:1px solid #64B5F6;border-radius:6px;}
+#footer{margin-top:20px;text-align:center;font-size:12px;color:#555;}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h3>📦 المنتجات</h3>
+  <select id="currencySelect" onchange="updateInvoice()">
+    <option value="SAR">ريال سعودي</option>
+    <option value="USD">دولار أمريكي</option>
+    <option value="YER">ريال يمني</option>
+  </select>
+  <input type="text" id="productSearch" placeholder="بحث بالاسم أو الكود" oninput="filterProducts()" style="width:100%;padding:5px;margin-bottom:5px;border:1px solid #64B5F6;border-radius:6px;">
+  <div id="productList" style="max-height:200px; overflow:auto; margin-bottom:10px; border:1px solid #64B5F6; padding:5px; border-radius:6px;"></div>
+  <button onclick="refreshProductList()">تحديث القائمة</button>
+
+  <hr>
+
+  <h3>➕ إضافة صنف جديد</h3>
+  <input type="text" id="newCode" placeholder="كود الصنف">
+  <input type="text" id="newName" placeholder="اسم الصنف">
+  <select id="newUnit">
+    <option value="حبة">حبة</option>
+    <option value="درزن">درزن</option>
+    <option value="كرتون">كرتون</option>
+  </select>
+  <input type="number" id="newPrice" placeholder="سعر الوحدة">
+  <input type="number" id="newQty" placeholder="الكمية">
+  <button onclick="addNewProduct()">إضافة الصنف</button>
+
+  <hr>
+  <h3>📝 الفواتير المرجعة</h3>
+  <div id="returnsList"></div>
+</div>
+
+<div id="mainScreen">
+  <h1>نقاط البيع</h1>
+
+  <label>اسم المتجر:</label>
+  <input type="text" id="storeName" placeholder="أدخل اسم المتجر">
+  <label>الرقم الضريبي للمتجر:</label>
+  <input type="text" id="storeTax" placeholder="أدخل الرقم الضريبي">
+  <label>عنوان المتجر:</label>
+  <input type="text" id="storeAddress" placeholder="أدخل عنوان المتجر">
+  <label>رقم الهاتف:</label>
+  <input type="text" id="storePhone" placeholder="أدخل رقم الهاتف">
+
+  <label>المحاسب / الكاشير:</label>
+  <input type="text" id="cashierName" placeholder="اسم المحاسب">
+
+  <div id="addProductForm">
+    <input type="text" id="barcodeInput" placeholder="مسح الباركود أو إدخال الكود">
+    <select id="productQty"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+    <input type="number" id="vatPercent" placeholder="قيمة مضافة %" value="5" min="0" style="width:80px;">
+    <button onclick="addProductFromInput()">إضافة للفاتورة</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>الاسم</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>ضريبة كل صنف</th><th>المخزون</th><th>حذف</th>
+      </tr>
+    </thead>
+    <tbody id="invoiceBody"></tbody>
+  </table>
+
+  <h3>👤 معلومات العميل</h3>
+  <input type="text" id="customerName" placeholder="اسم العميل">
+  <input type="text" id="customerNumber" placeholder="رقم العميل" onblur="fetchCustomer()">
+  <input type="text" id="customerTax" placeholder="الرقم الضريبي للعميل">
+
+  <div style="margin-top:10px;">
+    <label>طريقة الدفع:</label>
+    <select id="paymentMethod">
+      <option value="cash">كاش</option>
+      <option value="card">شبكة / بطاقة</option>
+      <option value="other">أخرى</option>
+    </select>
+    <button onclick="setPaymentNetwork()">اختيار شبكة (F6)</button>
+  </div>
+
+  <div id="total" style="margin-top:10px;font-weight:700;font-size:18px;">الإجمالي: 0 SAR</div>
+  <div id="footer">تم التطوير بواسطة الرقيب للبرمجة</div>
+</div>
+
+<div id="commandBar">
+  <button onclick="focusBarcode()">F4 بحث منتج</button>
+  <button onclick="saveOnly()">F9 حفظ فقط</button>
+  <button onclick="saveAndPrint()">F10 حفظ وطباعة</button>
+  <button onclick="clearInvoice()">F3 مسح</button>
+  <button onclick="closeAccount()">إغلاق الحساب</button>
+</div>
+
+<script>
+// ===== البيانات =====
+let products = JSON.parse(localStorage.getItem('products') || '[]');
+let invoiceItems = [];
+let discountPercent = 0;
+let sales = JSON.parse(localStorage.getItem('sales') || '[]');
+let customers = JSON.parse(localStorage.getItem('customers') || '[]');
+let currency = document.getElementById('currencySelect').value || 'SAR';
+
+// ===== دوال مساعدة =====
+function unitToCount(qty,unit){
+  switch(unit){
+    case 'حبة': return qty;
+    case 'درزن': return qty*12;
+    case 'كرتون': return qty*24;
+    default: return qty;
+  }
+}
+function saveProducts(){localStorage.setItem('products', JSON.stringify(products));}
+function saveSales(){localStorage.setItem('sales', JSON.stringify(sales));}
+function saveCustomers(){localStorage.setItem('customers', JSON.stringify(customers));}
+function saveStoreInfo(){
+  localStorage.setItem('storeName', document.getElementById('storeName').value);
+  localStorage.setItem('storeTax', document.getElementById('storeTax').value);
+  localStorage.setItem('storeAddress', document.getElementById('storeAddress').value);
+  localStorage.setItem('storePhone', document.getElementById('storePhone').value);
+}
+
+// ===== إدارة العملاء =====
+function fetchCustomer(){
+  const number = document.getElementById('customerNumber').value.trim();
+  const cust = customers.find(c=>c.number===number);
+  if(cust){
+    document.getElementById('customerName').value = cust.name;
+    document.getElementById('customerTax').value = cust.tax;
+  }
+}
+
+// ===== إدارة الفاتورة =====
+function updateInvoice(){
+  const tbody=document.getElementById('invoiceBody'); tbody.innerHTML=''; 
+  let sum=0;
+  invoiceItems.forEach((item,index)=>{
+    let itemTotal = item.total;
+    let itemVatAmount = itemTotal * (item.vat/100);
+    sum += itemTotal + itemVatAmount;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${item.name}</td>
+      <td><input type="number" value="${item.qty}" min="1" onchange="updateQty(${index},this.value)"></td>
+      <td><select onchange="updateUnit(${index},this.value)">
+        <option value="حبة" ${item.unit==='حبة'?'selected':''}>حبة</option>
+        <option value="درزن" ${item.unit==='درزن'?'selected':''}>درزن</option>
+        <option value="كرتون" ${item.unit==='كرتون'?'selected':''}>كرتون</option>
+      </select></td>
+      <td><input type="number" value="${item.price}" onchange="updatePrice(${index},this.value)"></td>
+      <td>${item.total.toFixed(2)}</td>
+      <td>${(itemVatAmount).toFixed(2)}</td>
+      <td>${item.stock}</td>
+      <td><button onclick="removeItem(${index})">❌</button></td>`;
+    tbody.appendChild(tr);
+  });
+  if(discountPercent>0) sum = sum*(1-discountPercent/100);
+  document.getElementById('total').textContent="الإجمالي: "+sum.toFixed(2)+" "+currency;
+}
+
+// ===== الأصناف =====
+function addNewProduct(){
+  const code=document.getElementById('newCode').value.trim();
+  const name=document.getElementById('newName').value.trim();
+  const unit=document.getElementById('newUnit').value;
+  const price=parseFloat(document.getElementById('newPrice').value);
+  const qty=parseInt(document.getElementById('newQty').value);
+  if(!code || !name || isNaN(price) || isNaN(qty)){alert("الرجاء إدخال جميع البيانات بشكل صحيح"); return;}
+  if(products.find(p=>p.code===code)){alert("هذا الكود موجود مسبقاً"); return;}
+  const newProduct={code,name,unit,price,quantity:qty};
+  products.push(newProduct); saveProducts(); refreshProductList();
+  document.getElementById('newCode').value=''; document.getElementById('newName').value='';
+  document.getElementById('newPrice').value=''; document.getElementById('newQty').value='';
+  alert("تم إضافة الصنف الجديد بنجاح!");
+}
+
+function refreshProductList(){
+  const listDiv=document.getElementById('productList'); listDiv.innerHTML='';
+  if(products.length===0){ listDiv.textContent="لا توجد منتجات"; return;}
+  products.forEach(p=>{
+    const btn=document.createElement('button'); btn.style.width="100%"; btn.style.marginBottom="3px";
+    btn.textContent=`${p.code} - ${p.name} (${p.quantity})`; 
+    btn.onclick=()=>{ addProductByCode(p.code); };
+    listDiv.appendChild(btn);
+  });
+}
+
+function filterProducts(){
+  const search=document.getElementById('productSearch').value.toLowerCase();
+  const filtered=products.filter(p=>p.code.toLowerCase().includes(search) || p.name.toLowerCase().includes(search));
+  const listDiv=document.getElementById('productList'); listDiv.innerHTML='';
+  if(filtered.length===0){listDiv.textContent="لا توجد منتجات"; return;}
+  filtered.forEach(p=>{
+    const btn=document.createElement('button'); btn.style.width="100%"; btn.style.marginBottom="3px";
+    btn.textContent=`${p.code} - ${p.name} (${p.quantity})`; btn.onclick=()=>{ addProductByCode(p.code); };
+    listDiv.appendChild(btn);
+  });
+}
+
+// ===== إضافة للفاتورة =====
+function addProductFromInput(){ 
+  const code=document.getElementById('barcodeInput').value.trim();
+  if(code) addProductByCode(code);
+  document.getElementById('barcodeInput').value='';
+}
+
+function addProductByCode(code){
+  // دعم باركود متغير (بداية 99) لاستخراج السعر — احتفظنا بالوظيفة إن لزم
+  function parseVariableBarcode(c){
+    if(c.startsWith('99') && c.length>=12){
+      let sectionCode = c.substring(0,3);
+      // السعر في مواضع محددة (مثال): 7-11
+      let pricePart = c.substring(7,12);
+      let price = parseInt(pricePart)/100;
+      let sectionName = '';
+      switch(sectionCode){
+        case '991': sectionName='خضار وفواكه'; break;
+        case '992': sectionName='أجبان ومخللات'; break;
+        case '993': sectionName='مكسرات وبهارات'; break;
+        case '994': sectionName='خبز ومعجنات'; break;
+        case '995': sectionName='حلويات وزن'; break;
+        default: sectionName='عنصر متغير';
+      }
+      return {name: sectionName, price: price};
+    }
+    return null;
+  }
+
+  let variable = parseVariableBarcode(code);
+  let qty = parseInt(document.getElementById('productQty').value)||1;
+  let vat = parseFloat(document.getElementById('vatPercent').value)||0;
+
+  if(variable){
+    // إضافة عنصر افتراضي من الباركود المتغير (سعر من الكود)
+    let name = variable.name;
+    let price = variable.price;
+    let total = price * qty;
+    invoiceItems.push({code:code,name:name,qty:qty,unit:'كجم',price:price,total:total,vat:vat,stock:'∞'});
+    updateInvoice();
+    return;
+  }
+
+  let product = products.find(p => p.code === code);
+  if(!product){ alert("المنتج غير موجود"); return; }
+  const qtyInUnit = unitToCount(qty, product.unit);
+  if(product.quantity < qtyInUnit){ alert("الكمية المطلوبة أكبر من المخزون"); return; }
+  product.quantity -= qtyInUnit;
+  saveProducts();
+  const total = product.price * qtyInUnit;
+  let existing = invoiceItems.find(item => item.code === code);
+  if(existing){
+    existing.qty += qty;
+    existing.total = existing.price * unitToCount(existing.qty, existing.unit);
+    existing.vat = vat;
+  } else {
+    invoiceItems.push({code: product.code, name: product.name, qty: qty, unit: product.unit, price: product.price, total: total, vat: vat, stock: product.quantity});
+  }
+  updateInvoice();
+  refreshProductList();
+}
+
+// ===== تحديثات الفاتورة =====
+function updateQty(i,v){ const item = invoiceItems[i]; let val=parseFloat(v)||1; item.qty=val; recalcItem(i);}
+function updateUnit(i,v){invoiceItems[i].unit=v; recalcItem(i);}
+function updatePrice(i,v){invoiceItems[i].price=parseFloat(v)||0; recalcItem(i);}
+function recalcItem(i){ const item=invoiceItems[i]; item.total=item.price*item.qty; updateInvoice();}
+function removeItem(i){invoiceItems.splice(i,1); updateInvoice(); refreshProductList();}
+
+// ===== خصم =====
+function addDiscount(){let d=parseFloat(prompt("أدخل نسبة الخصم %:", discountPercent)); if(!isNaN(d)) discountPercent=d; updateInvoice();}
+
+// ===== مسح الفاتورة =====
+function clearInvoice(){invoiceItems=[]; discountPercent=0; updateInvoice();}
+
+// ===== حفظ الفاتورة =====
+function saveOnly(){
+  if(invoiceItems.length===0){ alert("لا توجد منتجات"); return;}
+  saveStoreInfo();
+  let cashier=document.getElementById('cashierName').value||"غير محدد";
+  let store=document.getElementById('storeName').value||"نقاط البيع";
+  let storeTax=document.getElementById('storeTax').value||"";
+  let storeAddress=document.getElementById('storeAddress').value||"";
+  let storePhone=document.getElementById('storePhone').value||"";
+  let customerName=document.getElementById('customerName').value||"";
+  let customerNumber=document.getElementById('customerNumber').value||"";
+  let customerTax=document.getElementById('customerTax').value||"";
+  let paymentMethod = document.getElementById('paymentMethod').value || 'cash';
+  // حفظ العميل إن لم يكن موجوداً
+  if(customerNumber && !customers.find(c=>c.number===customerNumber)){
+    customers.push({number:customerNumber,name:customerName,tax:customerTax});
+    saveCustomers();
+  }
+  sales.push({date:new Date(), cashier, store, storeTax, storeAddress, storePhone, customerName, customerNumber, customerTax, items:invoiceItems, discount:discountPercent, currency, paymentMethod});
+  saveSales();
+  invoiceItems=[]; discountPercent=0;
+  updateInvoice();
+  alert("تم حفظ الفاتورة في المتصفح");
+}
+
+// ===== طباعة الفاتورة =====
+function saveAndPrint(){
+  if(invoiceItems.length===0){ alert("لا توجد منتجات"); return;}
+  saveStoreInfo();
+  let cashier=document.getElementById('cashierName').value||"غير محدد";
+  let store=document.getElementById('storeName').value||"نقاط البيع";
+  let storeTax=document.getElementById('storeTax').value||"";
+  let storeAddress=document.getElementById('storeAddress').value||"";
+  let storePhone=document.getElementById('storePhone').value||"";
+  let customerName=document.getElementById('customerName').value||"";
+  let customerNumber=document.getElementById('customerNumber').value||"";
+  let customerTax=document.getElementById('customerTax').value||"";
+  let paymentMethod = document.getElementById('paymentMethod').value || 'cash';
+
+  let win=window.open('','width=400,height=600');
+  win.document.write('<html><head><title>فاتورة POS</title><meta charset="utf-8"><style>body{font-family:Cairo;text-align:right;padding:10px;}table{width:100%;border-collapse:collapse;}td,th{padding:4px;border-bottom:1px solid #90CAF9;}</style></head><body>');
+  win.document.write('<h3 style="color:#0D47A1;">'+store+'</h3>');
+  if(storeTax) win.document.write('<p>الرقم الضريبي: '+storeTax+'</p>');
+  if(storeAddress) win.document.write('<p>العنوان: '+storeAddress+'</p>');
+  if(storePhone) win.document.write('<p>الهاتف: '+storePhone+'</p>');
+  win.document.write('<p>المحاسب: '+cashier+'</p>');
+  win.document.write('<table><tr><th>الاسم</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>ضريبة</th></tr>');
+  invoiceItems.forEach(item=>{
+    let itemVatAmount = (item.total * item.vat/100);
+    win.document.write(`<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.unit}</td><td>${item.price.toFixed(2)}</td><td>${item.total.toFixed(2)}</td><td>${itemVatAmount.toFixed(2)}</td></tr>`);
+  });
+  let totalSum = invoiceItems.reduce((acc,item)=> acc + item.total + (item.total*item.vat/100),0);
+  totalSum = totalSum * (1 - (discountPercent||0)/100);
+  win.document.write('</table><p>الخصم: '+(discountPercent||0)+'%</p>');
+  win.document.write('<p style="font-weight:bold;">الإجمالي بعد الخصم والضريبة: '+totalSum.toFixed(2)+' '+currency+'</p>');
+  if(customerName || customerNumber || customerTax){
+    win.document.write('<hr>');
+    win.document.write('<p>اسم العميل: '+customerName+'</p>');
+    win.document.write('<p>رقم العميل: '+customerNumber+'</p>');
+    win.document.write('<p>الرقم الضريبي للعميل: '+customerTax+'</p>');
+  }
+  win.document.write('<p>طريقة الدفع: '+(paymentMethod==='cash'?'كاش': paymentMethod==='card'?'شبكة / بطاقة':'أخرى')+'</p>');
+  let invoiceNumber = Math.floor(Math.random()*1000000);
+  win.document.write('<p style="text-align:center;"><img src="https://api.qrserver.com/v1/create-qr-code/?data=فاتورة-'+invoiceNumber+'&size=100x100" alt="QR"></p>');
+  win.document.write('<p style="text-align:center;color:#1565C0;font-weight:bold;">💙 شكراً لزيارتكم 💙</p>');
+  win.document.write('</body></html>');
+  win.document.close();
+  win.print();
+  saveOnly();
+}
+
+// ===== إغلاق الحساب =====
+function closeAccount(){
+  let cashier = prompt("أدخل اسم الكاشير لغلق الحساب","");
+  if(!cashier) return;
+  let todaySales = sales.filter(s=>s.cashier===cashier);
+  let total = todaySales.reduce((sum,s)=>sum + s.items.reduce((a,b)=>a+b.total + b.total*b.vat/100,0)*(1-(s.discount||0)/100),0);
+  alert(`إجمالي المبيعات لكاشير ${cashier}: ${total.toFixed(2)} ${currency}`);
+}
+
+// ===== طرق الدفع =====
+function setPaymentNetwork(){ document.getElementById('paymentMethod').value='card'; }
+
+// ===== ماسح الباركود تلقائي =====
+let barcodeBuffer = '';
+let barcodeTimer;
+document.addEventListener('keypress', function(e) {
+  if(barcodeTimer) clearTimeout(barcodeTimer);
+  if(e.key !== 'Enter'){
+    barcodeBuffer += e.key;
+    barcodeTimer = setTimeout(() => {
+      if(barcodeBuffer.length >= 3) addProductByCode(barcodeBuffer);
+      barcodeBuffer = '';
+    }, 100);
+  } else {
+    if(barcodeBuffer.length > 0){
+      addProductByCode(barcodeBuffer);
+      barcodeBuffer = '';
+    }
+  }
+});
+
+// ===== اختصارات لوحة المفاتيح =====
+document.addEventListener('keydown',function(e){
+  switch(e.key){
+    case 'F4': document.getElementById('barcodeInput').focus(); break;
+    case 'F6': setPaymentNetwork(); break; // الشبكة
+    case 'F8': addDiscount(); break; // خصم
+    case 'F9': saveOnly(); break;
+    case 'F10': saveAndPrint(); break;
+    case 'F3': clearInvoice(); break;
+  }
+});
+
+// ===== تهيئة النظام =====
+document.getElementById('storeName').value=localStorage.getItem('storeName')||'';
+document.getElementById('storeTax').value=localStorage.getItem('storeTax')||'';
+document.getElementById('storeAddress').value=localStorage.getItem('storeAddress')||'';
+document.getElementById('storePhone').value=localStorage.getItem('storePhone')||'';
+refreshProductList();
+updateInvoice();
+</script>
+
+</body>
+</html>
